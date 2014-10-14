@@ -1,7 +1,7 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_UseUpx=n
 #AutoIt3Wrapper_Change2CUI=n
-#AutoIt3Wrapper_Res_Fileversion=1.0.0.115
+#AutoIt3Wrapper_Res_Fileversion=1.0.0.117
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=y
 #AutoIt3Wrapper_Res_Language=1033
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
@@ -102,7 +102,7 @@ While 1 ; we loop 'forever' so we can easily restart the entire script, if we ar
 			$Ext=StringTrimLeft($File,StringInStr($File,".",0,-1))
 			if _ArraySearch($SafeExtensions,$Ext)=-1 then continueloop ; skip this file if extention isnt in safe list
 
-			If IsArray ($aMatches)Then ; if we have a list of file names to run though filebot
+			If IsArray ($aMatches) Then ; if we have a list of file names to run though filebot
 				for $m=1 to $aMatches[0]
 					$aMatches_Line=StringSplit($aMatches[$m],",") ; interprit the list: the list is one show per line formated as [left part of file name string],[Show name on TVDB]
 					$aMatches_Line[1]=StringStripWS ($aMatches_Line[1], 1+2)
@@ -160,7 +160,7 @@ While 1 ; we loop 'forever' so we can easily restart the entire script, if we ar
 				$Folder=_ArrayToString($aFolder,"",1)
 
  				for $x=@YEAR to @YEAR-80 Step -1
- 					if StringInStr($Folder,String($x)) AND NOT StringInStr($Folder,"("&String($x)&")")then
+ 					if StringInStr($Folder,String($x)) AND NOT StringInStr($Folder,"("&String($x)&")") then
  						_ConsoleWrite("  Added parenthsis to year in folder name ("&$x&")")
  						$Folder=StringReplace($Folder,String($x),"("&String($x)&")")
  						ExitLoop
