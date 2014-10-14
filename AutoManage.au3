@@ -1,7 +1,7 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_UseUpx=n
 #AutoIt3Wrapper_Change2CUI=n
-#AutoIt3Wrapper_Res_Fileversion=1.0.0.112
+#AutoIt3Wrapper_Res_Fileversion=1.0.0.115
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=y
 #AutoIt3Wrapper_Res_Language=1033
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
@@ -14,30 +14,37 @@ Opt("TrayIconHide",1)
 #include <Array.au3>
 
 Global $Title=@ScriptName
+Global $ScriptFullPathNoExt=StringTrimRight(@ScriptFullPath,4) ; ini, log and other suplement files will use the scripts file name and path
+Global $LogLevel=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "LogLevel", 3) ; we read log level early in case we want no logging at all, log level is 0 or >0 for now
+
 _ConsoleWrite("==="&$Title&" Start===")
 
 OnAutoItExitRegister ( "_exit" )
 
 If _only_instance(0) Then
-	IniWrite (StringTrimRight(@ScriptFullPath,4)&"_Settings.ini", "temp", "runagain", "1")
+	IniWrite ($ScriptFullPathNoExt&"_Settings.ini", "temp", "runagain", "1")
 	_ConsoleWrite("Multiple instances, setting runagain flag and exiting")
 	Exit
 endif
 Sleep(2000)
 
-$TopPath="H:\New Files"
-$MediaDrive="M:"
-$GoodExtensions=StringSplit ("avi,mp4,mkv,m4v,mpg,3g2,3gp,asf,asx,flv,mov,rm,,swf,vob,wmv", ",")
+; read various values from the ini file
+$FileSizeThreshold=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "FileSizeThreshold", 30)
+$ScanPath=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "ScanPath", "")
+$SeriesPath=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "SeriesPath", "")
+$Moviespath=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "MoviesPath", "")
+$SafeExtensions=StringSplit (IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "SafeExtensions", "avi,mp4,mkv,m4v,mpg,3g2,3gp,asf,asx,flv,mov,rm,swf,vob,wmv"), ",") ;Only these extensions will be
 
 Dim $aMatches
-_FileReadToArray(StringTrimRight(@ScriptFullPath,4)&"_Matches.txt", $aMatches)
+_FileReadToArray($ScriptFullPathNoExt&"_Matches.txt", $aMatches) ; Matches are a list of files to run through FileBot, see notes later on
 if @error Then
-	_ConsoleWrite("Couldn't Read Matches File")
+	_ConsoleWrite("Couldn't read matches file, continuing")
 	$aMatches = ""
 endif
 
-While 1
-	$List = _FileListToArray ($TopPath, "*", 0)
+While 1 ; we loop 'forever' so we can easily restart the entire script, if we are content to exit we need to do so manualy
+
+	$List = _FileListToArray ($ScanPath, "*", 0) ; get an array of files from the specified path
 	if @error Then
 		if @error = 4 then
 			_ConsoleWrite("No Files")
@@ -47,32 +54,41 @@ While 1
 		exit
 	endif
 
-	for $f=1 to $List[0]
-		$FilePath=$TopPath&"\"&$List[$f]
-		$attrib=FileGetAttrib ($FilePath)
+	for $f=1 to $List[0] ; loop through each file in scanpath
+		$FilePath=$ScanPath&"\"&$List[$f]
+		$attrib=FileGetAttrib ($FilePath) ; so we can determine if the we have a file, folder, system file or hidden file
 		$DeleteSubDirectory=false
 
 		_ConsoleWrite($FilePath&" ("&$attrib&")",2)
 
-		if StringInStr($attrib, "S") OR StringInStr($attrib,"H") then ContinueLoop
+		if StringInStr($attrib, "S") OR StringInStr($attrib,"H") then ContinueLoop ; if system or hidden file, skip to next file
 
-		if StringInStr($attrib, "D") then
-			;scan directory and determine file of intrest
+		if StringInStr($attrib, "D") then ; if directory lets scan inside to determine a file of interest
 			$Array=_FileListToArray ($FilePath, "*", 1)
-			if @error then ContinueLoop
-			$c=0
-			for $i=1 to $Array[0]
-				if FileGetSize($FilePath&"\"&$Array[$i]) > 30*1024*1024 Then
+			if @error Then
+				if @error = 4 then
+					_ConsoleWrite("  No Files")
+				else
+					_ConsoleWrite("  File Listing Error",2)
+				EndIf
+				ContinueLoop
+			endif
+
+			$c=0 ; counter for how many files of interest
+			for $i=1 to $Array[0] ; loop through each file in subdirectory
+				if FileGetSize($FilePath&"\"&$Array[$i]) > $FileSizeThreshold*1024*1024 Then ;if a file is large enough we must want it... needs to be rethought
 					$c=$c+1
 					$FilePath=$FilePath&"\"&$Array[$i]
 				endif
 			next
 			if $c=1 then
-				$DeleteSubDirectory=true
+				$DeleteSubDirectory=true ; since we had success lets delete this folder when we are done working with it... not very gracefull
 				_ConsoleWrite("  Changed To File: "&$FilePath,3)
-			else
-				if $c>1 then _ConsoleWrite("Too Many Matches Inside Directory",3)
-				if $c=0 then _ConsoleWrite("No Matches Inside Directory",3)
+			elseif $c>1 then
+				_ConsoleWrite("  Too Many Matches Inside Directory",3)
+				ContinueLoop
+			elseif $c=0 then
+				_ConsoleWrite("  No Matches Inside Directory",3)
 				ContinueLoop
 			endif
 		endif
@@ -84,11 +100,11 @@ While 1
 			_ConsoleWrite("  File: "&$File)
 
 			$Ext=StringTrimLeft($File,StringInStr($File,".",0,-1))
-			if _ArraySearch($GoodExtensions,$Ext)=-1 then continueloop
+			if _ArraySearch($SafeExtensions,$Ext)=-1 then continueloop ; skip this file if extention isnt in safe list
 
-			If IsArray ($aMatches)Then
+			If IsArray ($aMatches)Then ; if we have a list of file names to run though filebot
 				for $m=1 to $aMatches[0]
-					$aMatches_Line=StringSplit($aMatches[$m],",")
+					$aMatches_Line=StringSplit($aMatches[$m],",") ; interprit the list: the list is one show per line formated as [left part of file name string],[Show name on TVDB]
 					$aMatches_Line[1]=StringStripWS ($aMatches_Line[1], 1+2)
 					If $aMatches_Line[0]>1 then
 						$aMatches_Line[2]=StringStripWS ($aMatches_Line[2], 1+2)
@@ -106,17 +122,18 @@ While 1
 					endif
 				Next
 			endif
- 			if NOT FileExists($FilePath) then
+ 			if NOT FileExists($FilePath) then ; if filebot renamed a file we just stop everything and start the script over again in order to correct the entry in the file list array(s), surprisingly elegant except that filebot might run an extra time
 				_ConsoleWrite("Renamed A File, Starting Over")
 				ContinueLoop 2
 			EndIf
 
+			; now we get episode, season and show name, we go from best formated to worst formated
 			Dim $Breakdown[2]
-			$Breakdown=StringRegExp($File,'(?P<show>.*?)[sS](?P<season>[0-9]+)[\._ ]*[eE](?P<ep>[0-9]+)([- ]?[Ee+](?P<secondEp>[0-9]+))?',1) ;S01E02-E03
+			$Breakdown=StringRegExp($File,'(?P<show>.*?)[sS](?P<season>[0-9]+)[\._ ]*[eE](?P<ep>[0-9]+)([- ]?[Ee+](?P<secondEp>[0-9]+))?',1) ; S01E02 or S01E02-E03
 			if @error Then
-				$Breakdown=StringRegExp($File,'(?P<show>.*?)(?P<season>[0-9]{1,2})[Xx](?P<ep>[0-9]+)(-[0-9]+[Xx](?P<secondEp>[0-9]+))?',1) ;1x02
+				$Breakdown=StringRegExp($File,'(?P<show>.*?)(?P<season>[0-9]{1,2})[Xx](?P<ep>[0-9]+)(-[0-9]+[Xx](?P<secondEp>[0-9]+))?',1) ; 1x02
 				if @error then
-					$Breakdown=StringRegExp($File,'(.*?)[^0-9a-z](?P<season>[0-9]{1,2})(?P<ep>[0-9]{2})([\.\-][0-9]+(?P<secondEp>[0-9]{2})([ \-_\.]|$)[\.\-]?)?([^0-9a-z%]|$)',1) ;.602.
+					$Breakdown=StringRegExp($File,'(.*?)[^0-9a-z](?P<season>[0-9]{1,2})(?P<ep>[0-9]{2})([\.\-][0-9]+(?P<secondEp>[0-9]{2})([ \-_\.]|$)[\.\-]?)?([^0-9a-z%]|$)',1) ; .602.
 					if @error=0 AND ($Breakdown[1]="19" OR $Breakdown[1]="20") then
 						Dim $Breakdown[2]
 					endif
@@ -128,15 +145,15 @@ While 1
 			if StringInStr($File,".YIFY",1) then
 				_ConsoleWrite("  Found YIFI Movie")
 				$array=_MovieName($File)
-				$DestinationFilePath=$MediaDrive&"\Movies\"&$array[1]&$array[2]
+				$DestinationFilePath=$MoviesPath&"\"&$array[1]&$array[2]
 
 			elseif IsArray($Breakdown) and $Breakdown[0]<>"" and $Breakdown[1]<>"" Then
 				_ConsoleWrite("  Found Episode ["&$Breakdown[0]&"] ["&$Breakdown[1]&"]")
 				$Folder=$Breakdown[0]
 
+				; instead of doing a string replace we will loop the string manualy so we can do some conditional formating at some point
 				$aFolder=StringSplit($folder,"")
 				for $z=1 to $aFolder[0]-1
-					;if $aFolder[$z]="." AND NOT (Asc($aFolder[$z+1])>=48 AND Asc($aFolder[$z+1])<57) Then $aFolder[$z]=" "
 					if $aFolder[$z]="." Then $aFolder[$z]=" "
 					if $aFolder[$z]="_" Then $aFolder[$z]=" "
 				next
@@ -154,20 +171,18 @@ While 1
 				$Folder=StringStripWS ($Folder, 1+2)
 				$Folder=__StringProper($Folder)
 
-				If $Folder = "Tosh 0" Then $Folder = "Tosh.0"
-				;If $Folder = "Doctor Who" Then $Folder = "Doctor Who (2005)"
-				;If $Folder = "Conan" Then $Folder = "Conan (2010)"
+				If $Folder = "Tosh 0" Then $Folder = "Tosh.0" ; havn't thought of a way to handle show names with a period in them
 
 				_ConsoleWrite("  Destination Folder: "&$Folder)
 
 				If $Breakdown[1]<>"" then
-					if StringInStr(FileGetAttrib ($MediaDrive&"\Series\"&$Folder&"\Season "&$Breakdown[1]),"D") then
-						$DestinationPath=$MediaDrive&"\Series\"&$Folder&"\Season "&$Breakdown[1]
-					elseif StringInStr(FileGetAttrib ($MediaDrive&"\Series\"&$Folder&"\Season "&Abs($Breakdown[1])),"D") then
-						$DestinationPath=$MediaDrive&"\Series\"&$Folder&"\Season "&Abs($Breakdown[1])
+					if StringInStr(FileGetAttrib ($SeriesPath&"\"&$Folder&"\Season "&$Breakdown[1]),"D") then
+						$DestinationPath=$SeriesPath&"\"&$Folder&"\Season "&$Breakdown[1]
+					elseif StringInStr(FileGetAttrib ($SeriesPath&"\"&$Folder&"\Season "&Abs($Breakdown[1])),"D") then
+						$DestinationPath=$SeriesPath&"\"&$Folder&"\Season "&Abs($Breakdown[1])
 					else
-						if FileExists($MediaDrive&"\Series\"&$Folder&"\Season 1") then $Breakdown[1]=Abs($Breakdown[1])
-						$DestinationPath=$MediaDrive&"\Series\"&$Folder&"\Season "&$Breakdown[1]
+						if FileExists($SeriesPath&"\"&$Folder&"\Season 1") then $Breakdown[1]=Abs($Breakdown[1])
+						$DestinationPath=$SeriesPath&"\"&$Folder&"\Season "&$Breakdown[1]
 						_ConsoleWrite("  Creating Directory: "&$DestinationPath)
 						if NOT @Compiled then
 							_ConsoleWrite("  ===!!!RUNNING AS SCRIPT WONT MAKE THAT CHANGE!!!===")
@@ -176,7 +191,7 @@ While 1
 						endif
 					endif
 				Else
-					$DestinationPath=$MediaDrive&"\Series\"&$Folder
+					$DestinationPath=$SeriesPath&"\"&$Folder
 				endif
 				$DestinationFilePath=$DestinationPath&"\"&$File
 
@@ -205,7 +220,7 @@ While 1
 					endif
 				endif
 
-				if $DeleteSubDirectory AND DirGetSize($Path)<50*1000000 then
+				if $DeleteSubDirectory AND DirGetSize($Path) < $FileSizeThreshold*1024*1024 then
 					_ConsoleWrite("  Deleting Folder: "&$Path)
 					if DirRemove($Path,1)=1 Then
 						_ConsoleWrite("  Deleted Folder")
@@ -222,15 +237,15 @@ While 1
 	next
 
 	;if another proccess wasnt created during run then exit, otherwise lets go again
-	if IniRead (StringTrimRight(@ScriptFullPath,4)&"_Settings.ini", "temp", "runagain", "0") = 1 Then
+	if IniRead ($ScriptFullPathNoExt&"_Settings.ini", "temp", "runagain", "0") = 1 Then
 		_ConsoleWrite("Starting again (another instance tried to start during this run)")
-		if IniWrite (StringTrimRight(@ScriptFullPath,4)&"_Settings.ini", "temp", "runagain", "0") then ContinueLoop
+		if IniWrite ($ScriptFullPathNoExt&"_Settings.ini", "temp", "runagain", "0") then ContinueLoop
 	endif
 
 	exit
 wend
 
-
+;===============================================================================
 Func _MovieName($string)
 	local $smart[3], $founddate=False
 
@@ -265,6 +280,7 @@ Func _MovieName($string)
 
 	return $smart
 endfunc
+;===============================================================================
 Func _RunWait($Run, $Working="")
 	Local $sData, $sStdOut, $iPid
 	$iPid=Run($Run, $Working, @SW_HIDE, $STDERR_MERGED)
@@ -283,6 +299,7 @@ Func _RunWait($Run, $Working="")
 	WEnd
 	return $iPid
 endfunc
+;===============================================================================
 Func FileBot($FilePath, $Search)
 	Local $FileBotParameters = "-r --log warning -non-strict --format ""{n.space('.')}.{s00e00}.{airdate}.{t.space('.')}"""
 	_ConsoleWrite("  Parsing With FileBot")
@@ -301,6 +318,7 @@ Func FileBot($FilePath, $Search)
 	endif
 	return 1
 endfunc
+;===============================================================================
 func _FileUnlockWait($File, $Timeout=0, $Sleep=2000)
 	$Timeout=$Timeout*1000
 	$Time=TimerInit ( )
@@ -317,6 +335,7 @@ func _FileUnlockWait($File, $Timeout=0, $Sleep=2000)
 		Sleep($Sleep)
 	wend
 endfunc
+;===============================================================================
 Func __StringProper($s_String)
 	Local $iX = 0
 	Local $CapNext = 1
@@ -339,6 +358,7 @@ Func __StringProper($s_String)
 	Next
 	Return $s_nStr
 EndFunc   ;==>_StringProper
+;===============================================================================
 Func _ConsoleWrite($sMessage,$Level=1)
 	if Eval("LogLevel")="" then $LogLevel=3 ; If no level set max is used
 
@@ -351,11 +371,12 @@ Func _ConsoleWrite($sMessage,$Level=1)
 		$sMessage=@CRLF&$sTime&$sMessage
 
 		ConsoleWrite($sMessage)
-		FileWrite(StringTrimRight(@ScriptFullPath,4)&"_Log.txt",$sMessage)
+		FileWrite($ScriptFullPathNoExt&"_Log.txt",$sMessage)
 	endif
 
 	Return $sMessage
 EndFunc
+;===============================================================================
 Func _FileInUse($sFilename, $iAccess = 0)
     Local $aRet, $hFile, $iError, $iDA
     Local Const $GENERIC_WRITE = 0x40000000
@@ -428,6 +449,7 @@ func _only_instance($Flag);0=Continue 1=Exit 2=Inform/Exit 3=Prompt
 	EndIf
 	return 0
 endfunc
+;===============================================================================
 func _exit()
 	_ConsoleWrite("Finished")
 	;sleep(20000)
