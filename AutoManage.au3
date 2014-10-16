@@ -1,7 +1,7 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_UseUpx=n
 #AutoIt3Wrapper_Change2CUI=n
-#AutoIt3Wrapper_Res_Fileversion=1.0.0.117
+#AutoIt3Wrapper_Res_Fileversion=1.0.0.121
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=y
 #AutoIt3Wrapper_Res_Language=1033
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
@@ -21,7 +21,7 @@ _ConsoleWrite("==="&$Title&" Start===")
 
 OnAutoItExitRegister ( "_exit" )
 
-If _only_instance(0) Then
+If _only_instance(0) Then ; We wont allow multiple instances of the script, instead we set a flag in the ini file that's checked at the end to determine if the script should be run again
 	IniWrite ($ScriptFullPathNoExt&"_Settings.ini", "temp", "runagain", "1")
 	_ConsoleWrite("Multiple instances, setting runagain flag and exiting")
 	Exit
@@ -33,17 +33,20 @@ $FileSizeThreshold=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "F
 $ScanPath=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "ScanPath", "")
 $SeriesPath=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "SeriesPath", "")
 $Moviespath=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "MoviesPath", "")
+$FileDelete=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "FileDelete", 0)
+$RunFileBot=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "RunFileBot", 1)
 $SafeExtensions=StringSplit (IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "SafeExtensions", "avi,mp4,mkv,m4v,mpg,3g2,3gp,asf,asx,flv,mov,rm,swf,vob,wmv"), ",") ;Only these extensions will be
 
-Dim $aMatches
-_FileReadToArray($ScriptFullPathNoExt&"_Matches.txt", $aMatches) ; Matches are a list of files to run through FileBot, see notes later on
-if @error Then
-	_ConsoleWrite("Couldn't read matches file, continuing")
-	$aMatches = ""
+if $RunFileBot<>0 then
+	Dim $aMatches
+	_FileReadToArray($ScriptFullPathNoExt&"_Matches.txt", $aMatches) ; Matches are a list of files to run through FileBot, see notes later on when we actualy check against this list
+	if @error Then
+		_ConsoleWrite("Couldn't read matches file, continuing")
+		$aMatches = ""
+	endif
 endif
 
 While 1 ; we loop 'forever' so we can easily restart the entire script, if we are content to exit we need to do so manualy
-
 	$List = _FileListToArray ($ScanPath, "*", 0) ; get an array of files from the specified path
 	if @error Then
 		if @error = 4 then
@@ -57,7 +60,7 @@ While 1 ; we loop 'forever' so we can easily restart the entire script, if we ar
 	for $f=1 to $List[0] ; loop through each file in scanpath
 		$FilePath=$ScanPath&"\"&$List[$f]
 		$attrib=FileGetAttrib ($FilePath) ; so we can determine if the we have a file, folder, system file or hidden file
-		$DeleteSubDirectory=false
+		$RemoveSubDirectory=false
 
 		_ConsoleWrite($FilePath&" ("&$attrib&")",2)
 
@@ -82,7 +85,7 @@ While 1 ; we loop 'forever' so we can easily restart the entire script, if we ar
 				endif
 			next
 			if $c=1 then
-				$DeleteSubDirectory=true ; since we had success lets delete this folder when we are done working with it... not very gracefull
+				$RemoveSubDirectory=true ; since we had success lets delete this folder when we are done working with it... not very gracefull
 				_ConsoleWrite("  Changed To File: "&$FilePath,3)
 			elseif $c>1 then
 				_ConsoleWrite("  Too Many Matches Inside Directory",3)
@@ -102,56 +105,64 @@ While 1 ; we loop 'forever' so we can easily restart the entire script, if we ar
 			$Ext=StringTrimLeft($File,StringInStr($File,".",0,-1))
 			if _ArraySearch($SafeExtensions,$Ext)=-1 then continueloop ; skip this file if extention isnt in safe list
 
-			If IsArray ($aMatches) Then ; if we have a list of file names to run though filebot
-				for $m=1 to $aMatches[0]
-					$aMatches_Line=StringSplit($aMatches[$m],",") ; interprit the list: the list is one show per line formated as [left part of file name string],[Show name on TVDB]
-					$aMatches_Line[1]=StringStripWS ($aMatches_Line[1], 1+2)
-					If $aMatches_Line[0]>1 then
-						$aMatches_Line[2]=StringStripWS ($aMatches_Line[2], 1+2)
-					Else
-						ReDim $aMatches_Line[3]
-						$aMatches_Line[2]=$aMatches_Line[1]
-					endif
-
-					if StringLeft($File, StringLen($aMatches_Line[1])) = $aMatches_Line[1] Or _
-						StringLeft(StringReplace($File, "_", "."), StringLen($aMatches_Line[1])) = $aMatches_Line[1] Then
-						if NOT FileBot($FilePath, $aMatches_Line[2]) Then
-							_ConsoleWrite("  FileBot failed, skipping to next file")
-							ContinueLoop 2
+			if $RunFileBot>0 then
+				$ShowName=""
+				If IsArray ($aMatches) Then ; if we have a list of file names to run though filebot
+					for $m=1 to $aMatches[0]
+						$aMatches_Line=StringSplit($aMatches[$m],",") ; interprit the list: the list is one show per line formated as [left part of file name string],[Show name on TVDB]
+						$aMatches_Line[1]=StringStripWS ($aMatches_Line[1], 1+2)
+						If $aMatches_Line[0]>1 then ; optionaly a line can contain 1 value, if it does use that value for both comparison and lookup
+							$aMatches_Line[2]=StringStripWS ($aMatches_Line[2], 1+2)
+						Else
+							ReDim $aMatches_Line[3]
+							$aMatches_Line[2]=$aMatches_Line[1]
 						endif
+
+						if StringLeft($File, StringLen($aMatches_Line[1])) = $aMatches_Line[1] Or _ ;test to see if the first value in the line matches the left part of the filename
+							StringLeft(StringReplace($File, "_", "."), StringLen($aMatches_Line[1])) = $aMatches_Line[1] Then
+							$ShowName=$aMatches_Line[2] ; set showname so that filebot runs
+						endif
+					Next
+				endif
+
+				if $ShowName<>"" OR $RunFileBot=2 then
+					if NOT FileBot($FilePath, $ShowName) Then ; run file bot
+						_ConsoleWrite("  FileBot failed, skipping to next file")
+						ContinueLoop
 					endif
-				Next
-			endif
- 			if NOT FileExists($FilePath) then ; if filebot renamed a file we just stop everything and start the script over again in order to correct the entry in the file list array(s), surprisingly elegant except that filebot might run an extra time
-				_ConsoleWrite("Renamed A File, Starting Over")
-				ContinueLoop 2
+				endif
+
+				if NOT FileExists($FilePath) then ; if filebot renamed a file we just stop everything and start the script over again in order to correct the entry in the file list array(s), surprisingly elegant except that filebot might run an extra time
+					_ConsoleWrite("Renamed A File, Starting Over")
+					ContinueLoop 2
+				EndIf
 			EndIf
 
-			; now we get episode, season and show name, we go from best formated to worst formated
-			Dim $Breakdown[2]
-			$Breakdown=StringRegExp($File,'(?P<show>.*?)[sS](?P<season>[0-9]+)[\._ ]*[eE](?P<ep>[0-9]+)([- ]?[Ee+](?P<secondEp>[0-9]+))?',1) ; S01E02 or S01E02-E03
+			; now we try to get the episode, season and show name, we go from best formated to worst formated
+			Dim $EpisodeStrings[2]
+			$EpisodeStrings=StringRegExp($File,'(?P<show>.*?)[sS](?P<season>[0-9]+)[\._ ]*[eE](?P<ep>[0-9]+)([- ]?[Ee+](?P<secondEp>[0-9]+))?',1) ; S01E02 or S01E02-E03
 			if @error Then
-				$Breakdown=StringRegExp($File,'(?P<show>.*?)(?P<season>[0-9]{1,2})[Xx](?P<ep>[0-9]+)(-[0-9]+[Xx](?P<secondEp>[0-9]+))?',1) ; 1x02
+				$EpisodeStrings=StringRegExp($File,'(?P<show>.*?)(?P<season>[0-9]{1,2})[Xx](?P<ep>[0-9]+)(-[0-9]+[Xx](?P<secondEp>[0-9]+))?',1) ; 1x02
 				if @error then
-					$Breakdown=StringRegExp($File,'(.*?)[^0-9a-z](?P<season>[0-9]{1,2})(?P<ep>[0-9]{2})([\.\-][0-9]+(?P<secondEp>[0-9]{2})([ \-_\.]|$)[\.\-]?)?([^0-9a-z%]|$)',1) ; .602.
-					if @error=0 AND ($Breakdown[1]="19" OR $Breakdown[1]="20") then
-						Dim $Breakdown[2]
+					$EpisodeStrings=StringRegExp($File,'(.*?)[^0-9a-z](?P<season>[0-9]{1,2})(?P<ep>[0-9]{2})([\.\-][0-9]+(?P<secondEp>[0-9]{2})([ \-_\.]|$)[\.\-]?)?([^0-9a-z%]|$)',1) ; .602.
+					if @error=0 AND ($EpisodeStrings[1]="19" OR $EpisodeStrings[1]="20") then
+						Dim $EpisodeStrings[2]
 					endif
 				endif
 			endif
 
-			_ConsoleWrite("  Breakdown done ("&IsArray($Breakdown)&") ("&$Breakdown&")")
+			_ConsoleWrite("  Episode Strings: ("&IsArray($EpisodeStrings)&") ("&$EpisodeStrings&")")
 
-			if StringInStr($File,".YIFY",1) then
-				_ConsoleWrite("  Found YIFI Movie")
+			if StringInStr($File,".YIFY",1) then ; must be YIFY movie... only uploader with movie naming convention i'm willing to rely on 100% ATM
+				_ConsoleWrite("  Found YIFY Movie")
 				$array=_MovieName($File)
 				$DestinationFilePath=$MoviesPath&"\"&$array[1]&$array[2]
 
-			elseif IsArray($Breakdown) and $Breakdown[0]<>"" and $Breakdown[1]<>"" Then
-				_ConsoleWrite("  Found Episode ["&$Breakdown[0]&"] ["&$Breakdown[1]&"]")
-				$Folder=$Breakdown[0]
+			elseif IsArray($EpisodeStrings) and $EpisodeStrings[0]<>"" and $EpisodeStrings[1]<>"" Then ; must be episode
+				_ConsoleWrite("  Found Episode ["&$EpisodeStrings[0]&"] ["&$EpisodeStrings[1]&"]")
+				$Folder=$EpisodeStrings[0]
 
-				; instead of doing a string replace we will loop the string manualy so we can do some conditional formating at some point
+				; instead of doing a string replace we will loop the string manualy so we can do some conditional formating (at some point)
 				$aFolder=StringSplit($folder,"")
 				for $z=1 to $aFolder[0]-1
 					if $aFolder[$z]="." Then $aFolder[$z]=" "
@@ -175,14 +186,14 @@ While 1 ; we loop 'forever' so we can easily restart the entire script, if we ar
 
 				_ConsoleWrite("  Destination Folder: "&$Folder)
 
-				If $Breakdown[1]<>"" then
-					if StringInStr(FileGetAttrib ($SeriesPath&"\"&$Folder&"\Season "&$Breakdown[1]),"D") then
-						$DestinationPath=$SeriesPath&"\"&$Folder&"\Season "&$Breakdown[1]
-					elseif StringInStr(FileGetAttrib ($SeriesPath&"\"&$Folder&"\Season "&Abs($Breakdown[1])),"D") then
-						$DestinationPath=$SeriesPath&"\"&$Folder&"\Season "&Abs($Breakdown[1])
+				If $EpisodeStrings[1]<>"" then ; why did i care about this, could we of gotten this far without a
+					if StringInStr(FileGetAttrib ($SeriesPath&"\"&$Folder&"\Season "&$EpisodeStrings[1]),"D") then
+						$DestinationPath=$SeriesPath&"\"&$Folder&"\Season "&$EpisodeStrings[1]
+					elseif StringInStr(FileGetAttrib ($SeriesPath&"\"&$Folder&"\Season "&Abs($EpisodeStrings[1])),"D") then
+						$DestinationPath=$SeriesPath&"\"&$Folder&"\Season "&Abs($EpisodeStrings[1])
 					else
-						if FileExists($SeriesPath&"\"&$Folder&"\Season 1") then $Breakdown[1]=Abs($Breakdown[1])
-						$DestinationPath=$SeriesPath&"\"&$Folder&"\Season "&$Breakdown[1]
+						if FileExists($SeriesPath&"\"&$Folder&"\Season 1") then $EpisodeStrings[1]=Abs($EpisodeStrings[1])
+						$DestinationPath=$SeriesPath&"\"&$Folder&"\Season "&$EpisodeStrings[1]
 						_ConsoleWrite("  Creating Directory: "&$DestinationPath)
 						if NOT @Compiled then
 							_ConsoleWrite("  ===!!!RUNNING AS SCRIPT WONT MAKE THAT CHANGE!!!===")
@@ -193,6 +204,7 @@ While 1 ; we loop 'forever' so we can easily restart the entire script, if we ar
 				Else
 					$DestinationPath=$SeriesPath&"\"&$Folder
 				endif
+
 				$DestinationFilePath=$DestinationPath&"\"&$File
 
 			Else
@@ -205,29 +217,34 @@ While 1 ; we loop 'forever' so we can easily restart the entire script, if we ar
 				_ConsoleWrite("  ===!!!RUNNING AS SCRIPT WONT MAKE THAT CHANGE!!!===")
 
 			Elseif FileCopy($FilePath,$DestinationFilePath,1)=1 Then
+				_ConsoleWrite("  Copy Success, Removing Original...")
 				FileSetAttrib ($DestinationFilePath, "-RASH")
-				_ConsoleWrite("  Copy Success, Deleteing Original...")
 				sleep(3000)
-				if FileRecycle($FilePath)=1 Then
-					_ConsoleWrite("  Deleted File")
-				Else
-					_ConsoleWrite("  Couldn't Delete File, Trying One More Time...")
-					sleep(3000)
-					if FileRecycle($FilePath)=1 Then
-						_ConsoleWrite("  Deleted File")
-					Else
-						_ConsoleWrite("  Couldn't Delete File")
-					endif
-				endif
 
-				if $DeleteSubDirectory AND DirGetSize($Path) < $FileSizeThreshold*1024*1024 then
-					_ConsoleWrite("  Deleting Folder: "&$Path)
-					if DirRemove($Path,1)=1 Then
-						_ConsoleWrite("  Deleted Folder")
-					Else
-						_ConsoleWrite("  Couldn't Delete Folder")
+				for $l=1 to 3 ; remove the individual original media file
+					if $RemoveSubDirectory AND $Path<>$ScanPath AND DirGetSize($Path) < $FileSizeThreshold*1024*1024 then ; remove the subfolder the media file resides in
+						if $FileDelete=1 and DirRemove($Path,1)=1 Then
+							_ConsoleWrite("  Deleted Folder")
+							ExitLoop
+						elseif $FileDelete=0 and FileRecycle($Path)=1 Then
+							_ConsoleWrite("  Recycled Folder")
+							ExitLoop
+						Else
+							_ConsoleWrite("  Couldn't Delete Folder")
+						endif
+					else
+						if $FileDelete=1 and FileDelete($FilePath)=1 Then
+							_ConsoleWrite("  Deleted File")
+							ExitLoop
+						elseif $FileDelete=0 and FileRecycle($FilePath)=1 Then
+							_ConsoleWrite("  Recycled File")
+							ExitLoop
+						Else
+							_ConsoleWrite("  Couldn't Delete File")
+						endif
 					endif
-				endif
+					sleep(3000)
+				next
 
 			Else
 				_ConsoleWrite("  Copy Failed")
@@ -244,7 +261,8 @@ While 1 ; we loop 'forever' so we can easily restart the entire script, if we ar
 
 	exit
 wend
-
+;===============================================================================
+;===============================================================================
 ;===============================================================================
 Func _MovieName($string)
 	local $smart[3], $founddate=False
