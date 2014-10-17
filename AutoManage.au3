@@ -1,7 +1,7 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_UseUpx=n
 #AutoIt3Wrapper_Change2CUI=n
-#AutoIt3Wrapper_Res_Fileversion=1.0.0.121
+#AutoIt3Wrapper_Res_Fileversion=1.0.0.122
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=y
 #AutoIt3Wrapper_Res_Language=1033
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
@@ -33,7 +33,7 @@ $FileSizeThreshold=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "F
 $ScanPath=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "ScanPath", "")
 $SeriesPath=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "SeriesPath", "")
 $Moviespath=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "MoviesPath", "")
-$FileDelete=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "FileDelete", 0)
+$FileRemove=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "FileRemove", 1)
 $RunFileBot=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "RunFileBot", 1)
 $SafeExtensions=StringSplit (IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "SafeExtensions", "avi,mp4,mkv,m4v,mpg,3g2,3gp,asf,asx,flv,mov,rm,swf,vob,wmv"), ",") ;Only these extensions will be
 
@@ -223,20 +223,20 @@ While 1 ; we loop 'forever' so we can easily restart the entire script, if we ar
 
 				for $l=1 to 3 ; remove the individual original media file
 					if $RemoveSubDirectory AND $Path<>$ScanPath AND DirGetSize($Path) < $FileSizeThreshold*1024*1024 then ; remove the subfolder the media file resides in
-						if $FileDelete=1 and DirRemove($Path,1)=1 Then
+						if $FileRemove=2 and DirRemove($Path,1)=1 Then
 							_ConsoleWrite("  Deleted Folder")
 							ExitLoop
-						elseif $FileDelete=0 and FileRecycle($Path)=1 Then
+						elseif $FileRemove=1 and FileRecycle($Path)=1 Then
 							_ConsoleWrite("  Recycled Folder")
 							ExitLoop
 						Else
 							_ConsoleWrite("  Couldn't Delete Folder")
 						endif
 					else
-						if $FileDelete=1 and FileDelete($FilePath)=1 Then
+						if $FileRemove=2 and FileDelete($FilePath)=1 Then
 							_ConsoleWrite("  Deleted File")
 							ExitLoop
-						elseif $FileDelete=0 and FileRecycle($FilePath)=1 Then
+						elseif $FileRemove=1 and FileRecycle($FilePath)=1 Then
 							_ConsoleWrite("  Recycled File")
 							ExitLoop
 						Else
