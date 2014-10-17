@@ -17,10 +17,11 @@ Some highlights:
 * Other stuff?
 
 ## Instructions
-* Extract AutoManage.exe and supplementary files to any folder.
-* Configure your paths and preferences in the Settings.ini file.
-* Either setup a scheduled task to run the executable or set your torrent client to run the executable when a torrent is done seeding
-* Configure the Matches.txt list file so that FileBot identify episodes with very poor filenames, the file is setup with one "match" per line formated as: [left part of file name string],[Show name on TVDB]
+* Extract AutoManage.exe and supplementary files to any folder
+* Configure your paths and preferences in the Settings.ini file
+* [Optional] Either setup a scheduled task to run the executable or set your torrent client to run the executable when a torrent is done seeding
+* [Optional] Install FileBot for episode renaming (http://www.filebot.net/)
+* [Optional] Configure the Matches.txt list file so that FileBot can identify episodes with very poor filenames, the file is setup with one "match" per line formated as: [left part of file name string],[Show name on TVDB]
 
 ## Settings
   * ScanPath - Path to the directory that media files can be found
@@ -29,9 +30,17 @@ Some highlights:
   * SafeExtensions - Comma seperated list of file extensions to allow the script to identify as media
   * FileSizeThreshold - Size in MB, if a subfolder is larger than this after media inside it was moved the folder wont be deleted.
 	While scanning, If a file is smaller than this it will be skipped
-  * LogLevel - 0=Disable logging, 1=Enable Logging
-  * FileDelete - After a file has been copied to its destination: 0=Do nothing, 1=Recycle original, 2=Delete original
-  * RunFileBot - 0=Never, 1=If match is found in matches file, 2=Always
+  * LogLevel - Deside how the script does logging...
+    * 0 = Disable logging
+    * 1 = Enable logging
+  * FileDelete - After a file has been copied to its destination...
+    * 0 = Do nothing
+    * 1 = Recycle original
+    * 2 = Delete original
+  * RunFileBot - When to run FileBot...
+    * 0 = Never
+    * 1 = If match is found in matches file
+    * 2 = Always
 
 ## Known Issues/Notes
 * Always running filebot (RunFileBot=2) will cause it to run on files that have not been identified as either movie or episode, effect it unknown.
