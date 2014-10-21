@@ -1,7 +1,5 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
-#AutoIt3Wrapper_UseUpx=n
-#AutoIt3Wrapper_Change2CUI=n
-#AutoIt3Wrapper_Res_Fileversion=1.0.0.139
+#AutoIt3Wrapper_Res_Fileversion=1.0.0.163
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=y
 #AutoIt3Wrapper_Res_Language=1033
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
@@ -18,12 +16,14 @@ Global $Title = @ScriptName
 Global $ScriptFullPathNoExt = StringTrimRight(@ScriptFullPath,4) ; ini, log and other suplement files will use the scripts file name and path
 Global $LogLevel = IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "LogLevel", 3) ; we read log level early in case we want no logging at all, log level is 0 or >0 for now
 Global $LogToFile = True
+Global $NoChanges = Int(IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "NoChanges", 0))
+If NOT @Compiled Then $NoChanges = 1
 
 _ConsoleWrite("==="&$Title&" Start===")
 
 OnAutoItExitRegister ( "_exit" )
 
-If _OnlyInstance(0) Then ; We wont allow multiple instances of the script, instead we set a flag in the ini file that's checked at the end to determine If the script should be run again
+If _OnlyInstance(0) Then ; We won't allow multiple instances of the script, instead we set a flag in the ini file that's checked at the end to determine If the script should be run again
 	IniWrite ($ScriptFullPathNoExt&"_Settings.ini", "temp", "runagain", "1")
 	_ConsoleWrite("Multiple instances, setting runagain flag and exiting")
 	Exit
@@ -37,6 +37,7 @@ $SeriesPath=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "SeriesPa
 $MoviesPath=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "MoviesPath", "")
 $FileRemove=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "FileRemove", 1)
 $RunFileBot=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "RunFileBot", 1)
+$FileBotEpisodeFormat=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "FileBotEpisodeFormat", "{n.space('.')}.{s00e00}.{airdate}.{t.space('.')}")
 $SafeExtensions=StringSplit (IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "SafeExtensions", "avi,mp4,mkv,m4v,mpg,3g2,3gp,asf,asx,flv,mov,rm,swf,vob,wmv"), ",") ;Only these extensions will be
 
 ; check all user specified paths to make sure they are valid
@@ -68,9 +69,9 @@ While 1
 	$List = _FileListToArray ($ScanPath, "*", 0) ; get an array of files from the specified path
 	If @error Then
 		If @error = 4 then
-			_ConsoleWrite("No Files")
+			_ConsoleWrite("No files")
 		else
-			_ConsoleWrite("File Listing Error")
+			_ConsoleWrite("File listing error")
 		EndIf
 		exit
 	endif
@@ -90,9 +91,9 @@ While 1
 			$Array=_FileListToArray ($FilePath, "*", 1)
 			If @error Then
 				If @error = 4 then
-					_ConsoleWrite("  No Files")
+					_ConsoleWrite("  No files")
 				else
-					_ConsoleWrite("  File Listing Error")
+					_ConsoleWrite("  File listing error")
 				EndIf
 				ContinueLoop
 			endif
@@ -106,12 +107,12 @@ While 1
 			next
 			If $c=1 then
 				$RemoveSubDirectory = True ; since we had success lets delete this folder when we are done working with it... not very gracefull
-				_ConsoleWrite("  Changed To File: "&$FilePath,3)
+				_ConsoleWrite("  Changed to file: "&$FilePath,3)
 			elseIf $c>1 then
-				_ConsoleWrite("  Too Many Matches Inside Directory")
+				_ConsoleWrite("  Too many matches inside directory")
 				ContinueLoop
 			elseIf $c=0 then
-				_ConsoleWrite("  No Matches Inside Directory")
+				_ConsoleWrite("  No matches inside directory")
 				ContinueLoop
 			endif
 		endif
@@ -129,33 +130,37 @@ While 1
 			; run file bot
 			If $RunFileBot>0 then
 				$ShowName=""
-				If IsArray ($aMatches) Then ; If we have a list of file names to run though filebot
+				If IsArray ($aMatches) Then ; if we have a list of file names to run though filebot
 					for $m=1 to $aMatches[0]
 						$aMatches_Line=StringSplit($aMatches[$m],",") ; interprit the list: the list is one show per line formated as [left part of file name string],[Show name on TVDB]
 						$aMatches_Line[1]=StringStripWS ($aMatches_Line[1], 1+2)
-						If $aMatches_Line[0]>1 Then ; optionaly a line can contain 1 value, If it does use that value for both comparison and lookup
+						;_ConsoleWrite("  DebugA: "&$aMatches_Line[0]&" - "&$aMatches_Line[1])
+
+						If $aMatches_Line[0]>1 Then ; optionaly a line can contain 1 value, If it does use have 2 values use the second one
 							$aMatches_Line[2]=StringStripWS ($aMatches_Line[2], 1+2)
-						Else
+						Else ; didn't have a second value, using the first one
 							ReDim $aMatches_Line[3]
 							$aMatches_Line[2]=$aMatches_Line[1]
 						endif
+						;_ConsoleWrite("  DebugB: "&$aMatches_Line[0]&" - "&$aMatches_Line[1]&" - "&$aMatches_Line[2])
 
 						If StringLeft($File, StringLen($aMatches_Line[1])) = $aMatches_Line[1] Or _ ;test to see If the first value in the line matches the left part of the filename
 							StringLeft(StringReplace($File, "_", "."), StringLen($aMatches_Line[1])) = $aMatches_Line[1] Then
 							$ShowName=$aMatches_Line[2] ; set showname so that filebot runs
+							ExitLoop
 						endif
 					Next
 				endif
 
 				If $ShowName<>"" OR $RunFileBot=2 then
-					If NOT _FileBot($FilePath, $ShowName) Then ; run file bot
+					If NOT _FileBot($FilePath, $ShowName, "TheTVDB", $FileBotEpisodeFormat) Then ; run file bot
 						_ConsoleWrite("  FileBot failed, skipping to next file")
 						ContinueLoop
 					endif
 				endif
 
 				If NOT FileExists($FilePath) Then ; If filebot renamed a file we just stop everything and start the script over again in order to correct the entry in the file list array(s), surprisingly elegant except that filebot might run an extra time
-					_ConsoleWrite("Renamed A File, Starting Over")
+					_ConsoleWrite("Renamed a file, starting over")
 					ContinueLoop 2
 				EndIf
 			EndIf
@@ -173,15 +178,15 @@ While 1
 				endif
 			endif
 
-			_ConsoleWrite("  Episode Strings: ("&_ArrayToString ($EpisodeStrings)&")")
+			_ConsoleWrite("  Episode strings: ("&_ArrayToString ($EpisodeStrings)&")")
 
 			If StringInStr($File,".YIFY",1) Then ; must be YIFY movie... only uploader with movie naming convention i'm willing to rely on 100% ATM
-				_ConsoleWrite("  Found YIFY Movie")
+				_ConsoleWrite("  Found YIFY movie")
 				$aNewFileName=_MovieName($File)
 				$DestinationFilePath=$MoviesPath&"\"&$aNewFileName[3]
 
 			ElseIf IsArray($EpisodeStrings) and $EpisodeStrings[0]<>"" and $EpisodeStrings[1]<>"" Then ; must be episode
-				_ConsoleWrite("  Found Episode ["&$EpisodeStrings[0]&"] ["&$EpisodeStrings[1]&"]")
+				_ConsoleWrite("  Found episode ["&$EpisodeStrings[0]&"] ["&$EpisodeStrings[1]&"]")
 				$Folder=$EpisodeStrings[0]
 
 				; instead of doing a string replace we will loop the string manualy so we can do some conditional formating (at some point)
@@ -206,7 +211,7 @@ While 1
 
 				If $Folder = "Tosh 0" Then $Folder = "Tosh.0" ; havn't thought of a way to handle show names with a period in them
 
-				_ConsoleWrite("  Destination Folder: "&$Folder)
+				_ConsoleWrite("  Destination folder: "&$Folder)
 
 				If $EpisodeStrings[1]<>"" Then ; why did i care about this, could we of gotten this far without a
 					If StringInStr(FileGetAttrib ($SeriesPath&"\"&$Folder&"\Season "&$EpisodeStrings[1]),"D") then
@@ -216,9 +221,9 @@ While 1
 					else
 						If FileExists($SeriesPath&"\"&$Folder&"\Season 1") Then $EpisodeStrings[1]=Abs($EpisodeStrings[1])
 						$DestinationPath=$SeriesPath&"\"&$Folder&"\Season "&$EpisodeStrings[1]
-						_ConsoleWrite("  Creating Directory: "&$DestinationPath)
-						If NOT @Compiled then
-							_ConsoleWrite("  ===!!!RUNNING AS SCRIPT WONT MAKE THAT CHANGE!!!===")
+						_ConsoleWrite("  Creating directory: "&$DestinationPath)
+						If $NoChanges then
+							_ConsoleWrite("  ===!!!RUNNING AS SCRIPT WON'T MAKE THAT CHANGE!!!===")
 						else
 							DirCreate($DestinationPath)
 						endif
@@ -234,12 +239,12 @@ While 1
 				ContinueLoop
 			EndIf
 
-			_ConsoleWrite("  Copying File To: "&$DestinationFilePath)
-			If NOT @Compiled then
-				_ConsoleWrite("  ===!!!RUNNING AS SCRIPT WONT MAKE THAT CHANGE!!!===")
+			_ConsoleWrite("  Copying file to: "&$DestinationFilePath)
+			If $NoChanges then
+				_ConsoleWrite("  ===!!!RUNNING AS SCRIPT WON'T MAKE THAT CHANGE!!!===")
 
 			ElseIf FileCopy($FilePath,$DestinationFilePath,1)=1 Then
-				_ConsoleWrite("  Copy Success, Removing Original...")
+				_ConsoleWrite("  Copy success, removing original...")
 				FileSetAttrib ($DestinationFilePath, "-RASH")
 				sleep(3000)
 
@@ -330,23 +335,27 @@ Func _MovieName($sFileName)
 	Return $aSmart
 endfunc
 ;===============================================================================
-; Function Name:    _FileInUseWait
-; Description:		Checkes to see If a file has open handles
-; Call With:		_FileInUse($sFilePath, $iAccess = 0)
+; Function Name:    _FileBot
+; Description:		Runs FileBot in order to ID and rename a file
+; Call With:		_FileBot($sFilePath, $Search)
 ; Parameter(s):
-; Return Value(s):  On Success -
-; 					On Failure -
+; Return Value(s):  On Success - 1
+; 					On Failure - 0
 ; Author(s):        JohnMC - www.TeamMC.cc
 ; Date/Version:		10/15/2014  --  v1.0
 ;===============================================================================
-Func _FileBot($FilePath, $Search)
-	Local $FileBotParameters = "-r --log warning -non-strict --format ""{n.space('.')}.{s00e00}.{airdate}.{t.space('.')}"""
-	_ConsoleWrite("  Parsing With FileBot")
+Func _FileBot($FilePath, $Search="", $DB="TheTVDB", $FileBotFormat="")
+	Local $FileBotParameters = "-r -non-strict --db "&$DB&" --format """&$FileBotFormat&""""
+
+	_ConsoleWrite("_FileBot ["&$FilePath&"] ["&$Search&"]")
+
 	If _FileInUseWait($FilePath, 10) then
-		If NOT @Compiled then
-			_ConsoleWrite("  ===!!!RUNNING AS SCRIPT WONT MAKE THAT CHANGE!!!===")
+		If $NoChanges then
+			_ConsoleWrite("  ===!!!RUNNING AS SCRIPT WON'T MAKE THAT CHANGE!!!===")
 		else
-			If NOT _RunWait("filebot -rename """&$FilePath&""" --q """&$Search&""" "&$FileBotParameters) Then
+			Local $Run = "filebot -rename """&$FilePath&""" --q """&$Search&""" "&$FileBotParameters
+			_ConsoleWrite("  "&$Run)
+			If NOT _RunWait($Run) Then
 				_ConsoleWrite("  Error running Filebot")
 				return 0
 			endif
