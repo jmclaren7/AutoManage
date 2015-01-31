@@ -1,12 +1,13 @@
 ;===============================================================================
 ;DONT FORGET TO UPDATE VERSION NUMBERS AND DATES
-;REVISED 2014-06-20
+;REVISED 2014-10-20
 ;===============================================================================
 #include-once
 ;#Include <Array.au3>
 #include <Security.au3>
 ;#Include <String.au3>
 #include <File.au3>
+#include <Constants.au3>
 ;===============================================================================
 ; Function Name:    _RunWait
 ; Description:		Improved version of RunWait that plays nice with my console logging

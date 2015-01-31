@@ -1,5 +1,7 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
-#AutoIt3Wrapper_Res_Fileversion=1.0.0.163
+#AutoIt3Wrapper_UseUpx=n
+#AutoIt3Wrapper_Change2CUI=n
+#AutoIt3Wrapper_Res_Fileversion=1.0.0.173
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=y
 #AutoIt3Wrapper_Res_Language=1033
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
@@ -39,6 +41,8 @@ $FileRemove=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "FileRemo
 $RunFileBot=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "RunFileBot", 1)
 $FileBotEpisodeFormat=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "FileBotEpisodeFormat", "{n.space('.')}.{s00e00}.{airdate}.{t.space('.')}")
 $SafeExtensions=StringSplit (IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "SafeExtensions", "avi,mp4,mkv,m4v,mpg,3g2,3gp,asf,asx,flv,mov,rm,swf,vob,wmv"), ",") ;Only these extensions will be
+$ShowLookupAgent=IniRead ($ScriptFullPathNoExt&"_Settings.ini", "settings", "ShowLookupAgent", "TheTVDB")
+
 
 ; check all user specified paths to make sure they are valid
 If DriveStatus (StringLeft($ScanPath,3))<>"READY"  OR Not FileExists ($ScanPath) Then
@@ -130,30 +134,33 @@ While 1
 			; run file bot
 			If $RunFileBot>0 then
 				$ShowName=""
+				$Match=0
 				If IsArray ($aMatches) Then ; if we have a list of file names to run though filebot
 					for $m=1 to $aMatches[0]
 						$aMatches_Line=StringSplit($aMatches[$m],",") ; interprit the list: the list is one show per line formated as [left part of file name string],[Show name on TVDB]
 						$aMatches_Line[1]=StringStripWS ($aMatches_Line[1], 1+2)
 						;_ConsoleWrite("  DebugA: "&$aMatches_Line[0]&" - "&$aMatches_Line[1])
 
-						If $aMatches_Line[0]>1 Then ; optionaly a line can contain 1 value, If it does use have 2 values use the second one
+						If $aMatches_Line[0]>1 Then ; optionaly a line can contain 1 value, If it does have 2 values use the second one
 							$aMatches_Line[2]=StringStripWS ($aMatches_Line[2], 1+2)
 						Else ; didn't have a second value, using the first one
 							ReDim $aMatches_Line[3]
-							$aMatches_Line[2]=$aMatches_Line[1]
+							;$aMatches_Line[2]=$aMatches_Line[1]
+							$aMatches_Line[2]="" ; testing - if the second value was blank, dont specify search query that way filebot will figure it out (added an empty string condition in filebot function)
 						endif
 						;_ConsoleWrite("  DebugB: "&$aMatches_Line[0]&" - "&$aMatches_Line[1]&" - "&$aMatches_Line[2])
 
 						If StringLeft($File, StringLen($aMatches_Line[1])) = $aMatches_Line[1] Or _ ;test to see If the first value in the line matches the left part of the filename
 							StringLeft(StringReplace($File, "_", "."), StringLen($aMatches_Line[1])) = $aMatches_Line[1] Then
-							$ShowName=$aMatches_Line[2] ; set showname so that filebot runs
-							ExitLoop
+								$ShowName=$aMatches_Line[2] ; set showname so that filebot runs
+								$Match=1
+								ExitLoop
 						endif
 					Next
 				endif
 
-				If $ShowName<>"" OR $RunFileBot=2 then
-					If NOT _FileBot($FilePath, $ShowName, "TheTVDB", $FileBotEpisodeFormat) Then ; run file bot
+				If $Match OR $RunFileBot=2 then
+					If NOT _FileBot($FilePath, $ShowName, $ShowLookupAgent, $FileBotEpisodeFormat) Then ; run file bot
 						_ConsoleWrite("  FileBot failed, skipping to next file")
 						ContinueLoop
 					endif
@@ -345,7 +352,8 @@ endfunc
 ; Date/Version:		10/15/2014  --  v1.0
 ;===============================================================================
 Func _FileBot($FilePath, $Search="", $DB="TheTVDB", $FileBotFormat="")
-	Local $FileBotParameters = "-r -non-strict --db "&$DB&" --format """&$FileBotFormat&""""
+	Local $FileBotParameters = "-r -non-strict --db "&$DB&" --format """&$FileBotFormat&"""" ;
+	If $Search<>"" then $FileBotParameters = "--q """&$Search&""" " & $FileBotParameters
 
 	_ConsoleWrite("_FileBot ["&$FilePath&"] ["&$Search&"]")
 
@@ -353,7 +361,8 @@ Func _FileBot($FilePath, $Search="", $DB="TheTVDB", $FileBotFormat="")
 		If $NoChanges then
 			_ConsoleWrite("  ===!!!RUNNING AS SCRIPT WON'T MAKE THAT CHANGE!!!===")
 		else
-			Local $Run = "filebot -rename """&$FilePath&""" --q """&$Search&""" "&$FileBotParameters
+
+			Local $Run = "filebot -rename """&$FilePath&""" "&$FileBotParameters
 			_ConsoleWrite("  "&$Run)
 			If NOT _RunWait($Run) Then
 				_ConsoleWrite("  Error running Filebot")
